@@ -4,14 +4,13 @@ import torch
 import torchvision
 import time
 import random
-
+from tqdm import tqdm
 #%%
 # generate the MNIST dataset
 transforms = torchvision.transforms.Compose([
     torchvision.transforms.ToTensor(),
 ])
 mnist_dset = torchvision.datasets.MNIST("mnist", download=True, transform=transforms)
-print(mnist_dset[0][0].shape)
 
 #%%
 # show a sample
@@ -87,18 +86,10 @@ class ScoreNetwork0(torch.nn.Module):
         # x: (..., ch0 * 28 * 28), t: (..., 1), y: (..., num_classes)
         x2 = torch.reshape(x, (*x.shape[:-1], 1, 28, 28))  # (..., ch0, 28, 28)
         tt = t[..., None, None].expand(*t.shape[:-1], 1, 28, 28)  # (..., 1, 28, 28)
-        y0 = y[..., 0, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y1 = y[..., 1, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y2 = y[..., 2, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y3 = y[..., 3, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y4 = y[..., 4, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y5 = y[..., 5, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y6 = y[..., 6, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y7 = y[..., 7, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y8 = y[..., 8, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        y9 = y[..., 9, None, None].expand(*y.shape[:-1], 1, 28, 28)
-        x2t = torch.cat((x2, tt, y0, y1, y2, y3, y4, y5, y6, y7, y8, y9), dim=-3)
-        signal = x2t
+        
+        x2t = torch.cat((x2, tt), dim=-3)
+        yt = y[..., None, None].expand(*y.shape[:-1], y.shape[1], 28, 28)  # (..., 10, 28, 28)
+        signal = torch.cat((x2t, yt), dim=-3)
         signals = []
         for i, conv in enumerate(self._convs):
             signal = conv(signal)
@@ -147,8 +138,7 @@ dloader = torch.utils.data.DataLoader(mnist_dset, batch_size=64, shuffle=True)
 device = torch.device('cuda:0')  # change this if you don't have a gpu
 score_network = score_network.to(device)
 t0 = time.time()
-for i_epoch in range(1):
-    total_loss = 0
+for i_epoch in tqdm(range(400)):
     for data, image_class in dloader:
         data = data.reshape(data.shape[0], -1).to(device)
         image_class = torch.nn.functional.one_hot(image_class, 10).to(device)
@@ -163,13 +153,15 @@ for i_epoch in range(1):
         loss.backward()
         opt.step()
 
-        # running stats
-        total_loss = total_loss + loss.detach().item() * data.shape[0]
-
-    # print the training stats
+    # print the actual loss
     if i_epoch % 20 == 0:
-        print(f"{i_epoch} ({time.time() - t0}s): {total_loss / len(mnist_dset)}")
+        print(f"Epoch {i_epoch} ({time.time() - t0}s): Loss = {loss.item()}")
 
+#%%
+# Save the trained model
+torch.save(score_network.state_dict(), '/home/vilin/score-based-tutorial/score_network.pth')
+
+print("Saved model")
 #%%
 def generate_samples(score_network: torch.nn.Module, nsamples: int, class_to_generate: int, guidance_scale: float = 1.0) -> torch.Tensor:
     device = next(score_network.parameters()).device
