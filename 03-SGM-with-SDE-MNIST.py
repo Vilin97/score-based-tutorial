@@ -5,6 +5,7 @@ import torchvision
 import time
 import random
 from tqdm import tqdm
+import os
 #%%
 # generate the MNIST dataset
 transforms = torchvision.transforms.Compose([
@@ -133,47 +134,55 @@ def calc_loss(score_network: torch.nn.Module, x: torch.Tensor, y: torch.Tensor) 
 
 #%%
 # start the training loop
-opt = torch.optim.Adam(score_network.parameters(), lr=3e-4)
-dloader = torch.utils.data.DataLoader(mnist_dset, batch_size=64, shuffle=True)
-device = torch.device('cuda:0')  # change this if you don't have a gpu
-score_network = score_network.to(device)
-t0 = time.time()
-for i_epoch in tqdm(range(400)):
-    for data, image_class in dloader:
-        data = data.reshape(data.shape[0], -1).to(device)
-        image_class = torch.nn.functional.one_hot(image_class, 10).to(device)
-        
-        if random.random() < 0.2:
-            image_class = torch.zeros_like(image_class)
-        
-        opt.zero_grad()
+def train_nn():
+    print("Training the score network")
+    opt = torch.optim.Adam(score_network.parameters(), lr=3e-4)
+    dloader = torch.utils.data.DataLoader(mnist_dset, batch_size=64, shuffle=True)
+    device = torch.device('cuda:0')  # change this if you don't have a gpu
+    score_network = score_network.to(device)
+    t0 = time.time()
+    for i_epoch in tqdm(range(2000)):
+        for data, image_class in dloader:
+            data = data.reshape(data.shape[0], -1).to(device)
+            image_class = torch.nn.functional.one_hot(image_class, 10).to(device)
+            
+            if random.random() < 0.2:
+                image_class = torch.zeros_like(image_class)
+            
+            opt.zero_grad()
 
-        # training step
-        loss = calc_loss(score_network, data, image_class)
-        loss.backward()
-        opt.step()
+            # training step
+            loss = calc_loss(score_network, data, image_class)
+            loss.backward()
+            opt.step()
 
-    # print the actual loss
-    if i_epoch % 20 == 0:
-        print(f"Epoch {i_epoch} ({time.time() - t0}s): Loss = {loss.item()}")
+        # print the actual loss
+        if i_epoch % 20 == 0:
+            print(f"Epoch {i_epoch} ({time.time() - t0}s): Loss = {loss.item()}")
+    return score_network
+
+# score_network = train_nn()
+# torch.save(score_network.state_dict(), '/home/vilin/score-based-tutorial/score_network_2000_epochs.pth')
 
 #%%
-# Save the trained model
-torch.save(score_network.state_dict(), '/home/vilin/score-based-tutorial/score_network.pth')
+# Load the trained model
+score_network.load_state_dict(torch.load('/home/vilin/score-based-tutorial/score_network_2000_epochs.pth'))
+score_network.eval()
+print("Loaded model")
 
-print("Saved model")
 #%%
-def generate_samples(score_network: torch.nn.Module, nsamples: int, class_to_generate: int, guidance_scale: float = 1.0) -> torch.Tensor:
+def generate_samples(score_network: torch.nn.Module, nsamples: int, class_to_generate: int, guidance_scale: float = 1.0, num_time_steps=200, seed: int = 42) -> torch.Tensor:
+    torch.manual_seed(seed)
     device = next(score_network.parameters()).device
     x_t = torch.randn((nsamples, 28 * 28), device=device)  # (nsamples, nch)
-    time_pts = torch.linspace(1, 0, 1000, device=device)  # (ntime_pts,)
+    time_pts = torch.linspace(1, 0, num_time_steps+1, device=device)  # (ntime_pts,)
     beta = lambda t: 0.1 + (20 - 0.1) * t
 
     # One-hot encode the class to generate
     y_cond = torch.nn.functional.one_hot(torch.tensor([class_to_generate] * nsamples, device=device), num_classes=10).float()
     y_uncond = torch.zeros_like(y_cond)
 
-    for i in range(len(time_pts) - 1):
+    for i in tqdm(range(len(time_pts) - 1)):
         t = time_pts[i]
         dt = time_pts[i + 1] - t
 
@@ -196,14 +205,39 @@ def generate_samples(score_network: torch.nn.Module, nsamples: int, class_to_gen
 
     return x_t
 
-#%%
-samples = generate_samples(score_network, 20).detach().reshape(-1, 28, 28)
 
 #%%
-nrows, ncols = 3, 7
-plt.figure(figsize=(3 * ncols, 3 * nrows))
-for i in range(samples.shape[0]):
-    plt.subplot(nrows, ncols, i + 1)
-    plt.imshow(1 - samples[i].detach().cpu().numpy(), cmap="Greys")
-    plt.xticks([])
-    plt.yticks([])
+def save_samples(samples: torch.Tensor, class_to_generate: int, num_time_steps: int, guidance_scale: float, num_epochs: int, seed: int = 42, path: str = "generated"):
+    os.makedirs(path, exist_ok=True)
+    for i, sample in enumerate(samples):
+        plt.imsave(f"generated/digit_{class_to_generate}_steps_{num_time_steps}_scale_{guidance_scale}_epochs_{num_epochs}_{i}_seed_{seed}.png", 1 - sample.cpu().numpy(), cmap="Greys")
+
+def generate_and_save_samples(num_samples, training_epochs, classes_to_generate, guidance_scales, nums_time_steps, show=True):
+    print(f"{num_samples} samples, \n{training_epochs} training epochs, \n{classes_to_generate} classes to generate, \n{guidance_scales} guidance scales, \n{nums_time_steps} time steps")
+
+    for class_to_generate in classes_to_generate:
+        for guidance_scale in guidance_scales:
+            for num_time_steps in nums_time_steps:
+                print(f"Generating samples for class {class_to_generate}, guidance scale {guidance_scale}, num time steps {num_time_steps}")
+                samples = generate_samples(score_network, num_samples, class_to_generate, guidance_scale, num_time_steps).detach().reshape(-1, 28, 28)
+                save_samples(samples, class_to_generate, num_time_steps, guidance_scale, training_epochs)
+                if show:
+                    nrows, ncols = 3, 3
+                    plt.figure(figsize=(3 * ncols, 3 * nrows))
+                    for i in range(samples.shape[0]):
+                        plt.subplot(nrows, ncols, i + 1)
+                        plt.imshow(1 - samples[i].cpu().numpy(), cmap="Greys")
+                        plt.xticks([])
+                        plt.yticks([])
+                    plt.show()
+#%%
+num_samples = 9
+training_epochs = 2000
+classes_to_generate = [0,1,2,3,4,5,6,7,8,9]
+guidance_scales = [1]
+nums_time_steps = [500]
+# classes_to_generate = range(10)
+# guidance_scales = [0, 0.5, 1, 3]
+# nums_time_steps = [500, 1000]
+
+generate_and_save_samples(num_samples, training_epochs, classes_to_generate, guidance_scales, nums_time_steps, show=True)
