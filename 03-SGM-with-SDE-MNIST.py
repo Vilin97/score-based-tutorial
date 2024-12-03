@@ -171,7 +171,13 @@ score_network.eval()
 print("Loaded model")
 
 #%%
-def generate_samples(score_network: torch.nn.Module, nsamples: int, class_to_generate: int, guidance_scale: float = 1.0, num_time_steps=200, seed: int = 42) -> torch.Tensor:
+def generate_samples(score_network: torch.nn.Module, nsamples: int, class_to_generate: int, guidance_scale: float = 1.0, num_time_steps=200, seed: int = 42, use_cached: bool = True) -> torch.Tensor:
+    if use_cached:
+        sample_path = get_sample_path(class_to_generate, num_time_steps, guidance_scale, 2000, 0, seed)
+        if os.path.exists(sample_path):
+            print(f"Samples for class {class_to_generate}, guidance scale {guidance_scale}, num time steps {num_time_steps} already exist. Skipping generation.")
+            return None
+
     torch.manual_seed(seed)
     device = next(score_network.parameters()).device
     x_t = torch.randn((nsamples, 28 * 28), device=device)  # (nsamples, nch)
@@ -207,10 +213,13 @@ def generate_samples(score_network: torch.nn.Module, nsamples: int, class_to_gen
 
 
 #%%
+def get_sample_path(class_to_generate: int, num_time_steps: int, guidance_scale: float, num_epochs: int, sample_index: int, seed: int = 42, path: str = "generated") -> str:
+    return f"{path}/digit_{class_to_generate}_steps_{num_time_steps}_scale_{guidance_scale}_epochs_{num_epochs}_{sample_index}_seed_{seed}.png"
+
 def save_samples(samples: torch.Tensor, class_to_generate: int, num_time_steps: int, guidance_scale: float, num_epochs: int, seed: int = 42, path: str = "generated"):
     os.makedirs(path, exist_ok=True)
     for i, sample in enumerate(samples):
-        plt.imsave(f"generated/digit_{class_to_generate}_steps_{num_time_steps}_scale_{guidance_scale}_epochs_{num_epochs}_{i}_seed_{seed}.png", 1 - sample.cpu().numpy(), cmap="Greys")
+        plt.imsave(get_sample_path(class_to_generate, num_time_steps, guidance_scale, num_epochs, i, seed, path), 1 - sample.cpu().numpy(), cmap="Greys")
 
 def generate_and_save_samples(num_samples, training_epochs, classes_to_generate, guidance_scales, nums_time_steps, show=True):
     print(f"{num_samples} samples, \n{training_epochs} training epochs, \n{classes_to_generate} classes to generate, \n{guidance_scales} guidance scales, \n{nums_time_steps} time steps")
@@ -230,14 +239,100 @@ def generate_and_save_samples(num_samples, training_epochs, classes_to_generate,
                         plt.xticks([])
                         plt.yticks([])
                     plt.show()
+
+#%%
+def plot_images_with_titles(images, titles, nrows=1, ncols=None, suptitle=None):
+    if ncols is None:
+        ncols = len(images)
+    fig, axs = plt.subplots(nrows, ncols, figsize=(3 * ncols, 3 * nrows))
+    for i, (image, title) in enumerate(zip(images, titles)):
+        ax = axs[i] if nrows == 1 else axs[i // ncols, i % ncols]
+        ax.imshow(image, cmap="Greys")
+        ax.set_title(title)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_frame_on(False)
+    if suptitle:
+        fig.suptitle(suptitle)
+    fig.tight_layout()
+    return fig
+
+def load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, seed=42, sample_index=0):
+    loaded_images = []
+    parameters = []
+    for class_to_generate in classes_to_generate:
+        for guidance_scale in guidance_scales:
+            for num_time_steps in nums_time_steps:
+                sample_path = get_sample_path(class_to_generate, num_time_steps, guidance_scale, training_epochs, sample_index, seed)
+                if os.path.exists(sample_path):
+                    image = plt.imread(sample_path)
+                    loaded_images.append(image)
+                    parameters.append({
+                        "class_to_generate": class_to_generate,
+                        "guidance_scale": guidance_scale,
+                        "num_time_steps": num_time_steps
+                    })
+                else:
+                    print(f"Sample not found: {sample_path}")
+    return loaded_images, parameters
+
+#%%
+num_samples = 9
+training_epochs = 2000
+classes_to_generate = [7]
+guidance_scales = [-4, -2]
+nums_time_steps = [200]
+# classes_to_generate = [0,1,2,3,4,5,6,7,8,9]
+# guidance_scales = [0, 0.5, 1, 3]
+# nums_time_steps = [500, 1000]
+
+generate_and_save_samples(num_samples, training_epochs, classes_to_generate, guidance_scales, nums_time_steps, show=True)
+
+#%%
+num_samples = 9
+training_epochs = 2000
+classes_to_generate = [7]
+guidance_scales = [-4, -2, -1, 0, 1, 3, 10, 30]
+nums_time_steps = [200]
+
+for sample_index in range(0,9):
+    images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
+
+    titles = [f"guidance {t['guidance_scale']}" for t in parameters]
+    fig = plot_images_with_titles(images, titles, nrows=2, ncols=len(images)//2)
+    fig.show()
+    os.makedirs("comparisons/guidance_scale", exist_ok=True)
+    fig.savefig(f"comparisons/guidance_scale/samples_{sample_index}.png")
+
+#%%
+num_samples = 9
+training_epochs = 2000
+classes_to_generate = [7]
+guidance_scales = [1]
+nums_time_steps = [20, 50, 200, 500, 1000]
+
+for sample_index in range(0,9):
+    images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
+
+    titles = [f"{t['num_time_steps']} steps" for t in parameters]
+    fig = plot_images_with_titles(images, titles, nrows=1, ncols=len(images))
+    fig.show()
+    os.makedirs("comparisons/num_time_steps", exist_ok=True)
+    fig.savefig(f"comparisons/num_time_steps/samples_{sample_index}.png")
+
 #%%
 num_samples = 9
 training_epochs = 2000
 classes_to_generate = [0,1,2,3,4,5,6,7,8,9]
 guidance_scales = [1]
 nums_time_steps = [500]
-# classes_to_generate = range(10)
-# guidance_scales = [0, 0.5, 1, 3]
-# nums_time_steps = [500, 1000]
 
-generate_and_save_samples(num_samples, training_epochs, classes_to_generate, guidance_scales, nums_time_steps, show=True)
+for sample_index in range(0,9):
+    images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
+
+    titles = [f"digit {t['class_to_generate']}" for t in parameters]
+    fig = plot_images_with_titles(images, titles, nrows=1, ncols=len(images))
+    fig.show()
+    os.makedirs("comparisons/digits", exist_ok=True)
+    fig.savefig(f"comparisons/digits/samples_{sample_index}.png")
+
