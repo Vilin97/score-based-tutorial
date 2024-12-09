@@ -1,4 +1,3 @@
-
 #%%
 import torch
 import torchvision
@@ -13,7 +12,7 @@ transforms = torchvision.transforms.Compose([
     torchvision.transforms.ToTensor(),
 ])
 mnist_dset = torchvision.datasets.MNIST("mnist", download=True, transform=transforms)
-
+device = torch.device('cuda:0')  # change this if you don't have a gpu
 #%%
 # show a sample
 # the first index is for the dataset, the second is for the tuple, the third one is for channel
@@ -166,7 +165,7 @@ def train_nn():
 #%%
 # Load the trained model
 score_network = ScoreNetwork0(10)
-score_network.load_state_dict(torch.load('/home/vilin/score-based-tutorial/score_network.pth'))
+score_network.load_state_dict(torch.load('/home/vilin/score-based-tutorial/score_network_2000_epochs.pth'))
 score_network.eval()
 print("Loaded model")
 
@@ -276,104 +275,6 @@ def load_generated_samples(training_epochs, classes_to_generate, guidance_scales
                     print(f"Sample not found: {sample_path}")
     return loaded_images, parameters
 
-#%%
-# Generate samples
-num_samples = 9
-training_epochs = 400
-classes_to_generate = [7]
-guidance_scales = [1]
-nums_time_steps = [200, 1000]
-# classes_to_generate = [0,1,2,3,4,5,6,7,8,9]
-# guidance_scales = [0, 0.5, 1, 3]
-# nums_time_steps = [500, 1000]
-
-generate_and_save_samples(num_samples, training_epochs, classes_to_generate, guidance_scales, nums_time_steps, show=True)
-
-#%%
-sample_indices = range(9)
-training_epochs_list = [400, 2000]
-classes_to_generate = [7]
-guidance_scales = [1]
-nums_time_steps = [1000]
-save = True
-fontsize = 22
-
-images_all = []
-titles_all = []
-for sample_index in sample_indices:
-    for training_epochs in training_epochs_list:
-        images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
-        images_all.extend(images)
-        titles_all.extend([f"{training_epochs} epochs" for t in parameters])
-
-fig = plot_images_with_titles(images_all, titles_all, nrows=len(sample_indices), ncols=len(training_epochs_list), fontsize=fontsize)
-fig.show()
-os.makedirs("comparisons/training_epochs", exist_ok=True)
-if save:
-    fig.savefig(f"comparisons/training_epochs/all_samples.png") 
-#%%
-sample_indices = range(5)
-training_epochs = 2000
-classes_to_generate = [7]
-# guidance_scales = [-4, -2, -1, 0, 1, 3, 10, 30]
-guidance_scales = [-4, -1, 1, 10]
-nums_time_steps = [200]
-save = True
-fontsize = 22
-
-images_all = []
-titles_all = []
-for sample_index in sample_indices:
-    images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
-    images_all.extend(images)
-    titles_all.extend([fr"$\gamma={t['guidance_scale']}$" for t in parameters])
-
-fig = plot_images_with_titles(images_all, titles_all, nrows=len(sample_indices), ncols=len(guidance_scales), fontsize=fontsize)
-fig.show()
-os.makedirs("comparisons/guidance_scale", exist_ok=True)
-if save:
-    fig.savefig(f"comparisons/guidance_scale/all_samples.png")
-
-#%%
-sample_indices = range(5)
-training_epochs = 2000
-classes_to_generate = [7]
-guidance_scales = [1]
-nums_time_steps = [20, 50, 200, 1000]
-save = True
-fontsize = 22
-
-images_all = []
-titles_all = []
-for sample_index in sample_indices:
-    images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
-    images_all.extend(images)
-    titles_all.extend([fr"$n={t['num_time_steps']}$" for t in parameters])
-
-fig = plot_images_with_titles(images_all, titles_all, nrows=len(sample_indices), ncols=len(nums_time_steps), fontsize=fontsize)
-fig.show()
-os.makedirs("comparisons/num_time_steps", exist_ok=True)
-if save:
-    fig.savefig(f"comparisons/num_time_steps/all_samples.png")
-    
-#%%
-num_samples = 9
-training_epochs = 2000
-classes_to_generate = [0,1,2,3,4,5,6,7,8,9]
-guidance_scales = [1]
-nums_time_steps = [500]
-fontsize = 22
-
-for sample_index in range(0,9):
-    images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
-
-    titles = [f"digit {t['class_to_generate']}" for t in parameters]
-    fig = plot_images_with_titles(images, titles, nrows=2, ncols=len(images)//2, fontsize=fontsize)
-    fig.show()
-    os.makedirs("comparisons/digits", exist_ok=True)
-    fig.savefig(f"comparisons/digits/samples_{sample_index}.png")
-
-#%%
 def find_closest_neighbor(image: torch.Tensor, dataset: torchvision.datasets.MNIST) -> int:
     image = image.flatten()
     max_similarity = -1
@@ -386,47 +287,292 @@ def find_closest_neighbor(image: torch.Tensor, dataset: torchvision.datasets.MNI
             max_similarity = similarity
             closest_index = idx
 
-    return closest_index
+    return closest_index, max_similarity
 
 #%%
-num_samples = 9
+# Generate samples
+num_samples = 1000
 training_epochs = 2000
-classes_to_generate = [0,1,2,3,4,5,6,7,8,9]
-guidance_scales = [1]
-nums_time_steps = [500]
-fontsize = 22
+classes_to_generate = [7]
+guidance_scales = [-2, -1, -0.5, 0]
+nums_time_steps = [200]
+classes_to_generate = [7]
+# guidance_scales = [0, 0.5, 1, 3]
+# nums_time_steps = [500, 1000]
 
-images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=6)
-closest_neighbors = []
-for image in images:
-    closest_index = find_closest_neighbor(torch.tensor(image)[:,:,0], mnist_dset)
-    closest_neighbors.append(mnist_dset[closest_index][0].numpy().squeeze())
-one_minus_neighbors = [1 - n for n in closest_neighbors]
+generate_and_save_samples(num_samples, training_epochs, classes_to_generate, guidance_scales, nums_time_steps, show=False)
 
 #%%
-# Plot generated images and their closest neighbors in one plot
-titles_images = [f"generated" for t in parameters]
+# Train a model on MNIST to classify digits
+class ClassifierNetwork(torch.nn.Module):
+    def __init__(self):
+        super(ClassifierNetwork, self).__init__()
+        self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.fc1 = torch.nn.Linear(64 * 7 * 7, 128)
+        self.fc2 = torch.nn.Linear(128, 10)
+        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+        self.relu = torch.nn.ReLU()
 
-# Compute cosine similarity and make it the title
-titles_neighbors = []
-for image, neighbor in zip(images, closest_neighbors):
-    image_tensor = torch.tensor(image)[:,:,0].flatten()
-    neighbor_tensor = torch.tensor(neighbor).flatten()
-    similarity = torch.nn.functional.cosine_similarity(image_tensor, neighbor_tensor, dim=0).item()
-    titles_neighbors.append(f"similarity {similarity:.2f}")
+    def forward(self, x):
+        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.relu(self.conv2(x)))
+        x = x.view(-1, 64 * 7 * 7)
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
-all_images = images + one_minus_neighbors
-all_titles = titles_images + titles_neighbors
+def train_classifier():
+    classifier = ClassifierNetwork().to(device)
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3)
+    dloader = torch.utils.data.DataLoader(mnist_dset, batch_size=64, shuffle=True)
 
-fig = plot_images_with_titles(all_images, all_titles, nrows=2, ncols=len(images), fontsize=fontsize)
-fig.show()
-os.makedirs("comparisons/closest_mnist_neighbors", exist_ok=True)
-fig.savefig(f"comparisons/closest_mnist_neighbors/all_samples.png")
+    for epoch in range(10):
+        classifier.train()
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        for data, target in tqdm(dloader, desc=f"Epoch {epoch + 1}"):
+            data, target = data.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = classifier(data)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+            
+            _, predicted = torch.max(output.data, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
+        
+        accuracy = 100 * correct / total
+        print(f"Epoch {epoch + 1}, Loss: {running_loss / len(dloader)}, Accuracy: {accuracy}%")
 
-all_images = images + one_minus_neighbors
-all_titles = titles_images + titles_neighbors
+    return classifier
 
-fig = plot_images_with_titles(all_images, all_titles, nrows=2, ncols=len(images), fontsize=fontsize)
-fig.show()
-os.makedirs("comparisons/closest_mnist_neighbors", exist_ok=True)
-fig.savefig(f"comparisons/closest_mnist_neighbors/all_samples.png")
+def test_classifier(classifier):
+    classifier.eval()
+    test_dset = torchvision.datasets.MNIST("mnist", train=False, download=True, transform=transforms)
+    test_loader = torch.utils.data.DataLoader(test_dset, batch_size=64, shuffle=False)
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
+            outputs = classifier(data)
+            _, predicted = torch.max(outputs.data, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
+    print(f"Accuracy: {100 * correct / total}%")
+
+# Train and test the classifier
+# device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+# classifier = train_classifier()
+# test_classifier(classifier)
+# torch.save(classifier.state_dict(), '/home/vilin/score-based-tutorial/classifier.pth')
+
+#%%
+# Load the trained classifier
+classifier = ClassifierNetwork().to(device)
+classifier.load_state_dict(torch.load('/home/vilin/score-based-tutorial/classifier.pth'))
+classifier.eval()
+print("Loaded classifier")
+
+#%%
+# Load the samples with guidance scale = -1
+import numpy as np
+training_epochs = 2000
+classes_to_generate = [7]
+guidance_scales = [-2, -1, -0.5, 0]
+nums_time_steps = [200]
+
+digit_frequencies = {i: [] for i in range(10)}
+
+for guidance_scale in guidance_scales:
+    all_classified_labels = []
+
+    for sample_index in tqdm(range(1000)):
+        images, parameters = load_generated_samples(training_epochs, classes_to_generate, [guidance_scale], nums_time_steps, sample_index=sample_index)
+
+        # Use the trained classifier to classify the generated digits
+        classified_labels = []
+        classifier.eval()
+        transform = torchvision.transforms.Compose([
+            torchvision.transforms.ToTensor(),
+        ])
+
+        for image in images:
+            image_tensor = transform(image).unsqueeze(0).to(device)[:,0,:,:]
+            output = classifier(image_tensor)
+            _, predicted_label = torch.max(output, 1)
+            classified_labels.append(predicted_label.item())
+
+        all_classified_labels.extend(classified_labels)
+
+    # Calculate frequency of each digit
+    counts, _ = np.histogram(all_classified_labels, bins=range(11), density=True)
+    for digit in range(10):
+        digit_frequencies[digit].append(counts[digit])
+
+    # Plot a bar histogram of the generated digits
+    plt.figure(figsize=(10, 6))
+    counts, bins, patches = plt.hist(all_classified_labels, bins=range(11), align='left', rwidth=0.8)
+    plt.xticks(range(10), fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.xlabel('Digit', fontsize=16)
+    plt.ylabel('Frequency', fontsize=16)
+    plt.title(f'$\gamma={guidance_scale}$', fontsize=18)
+
+    # Add frequency percentage on top of each bar
+    for count, patch in zip(counts, patches):
+        height = patch.get_height()
+        plt.text(patch.get_x() + patch.get_width() / 2, height, f'{count / sum(counts) * 100:.1f}%', ha='center', va='bottom', fontsize=14)
+
+    plt.show()
+    # plt.savefig(f"generated_digits_histogram_guidance_scale_{guidance_scale}.png")
+
+#%%
+# Plot frequency of each digit as a function of guidance scale
+plt.figure(figsize=(12, 8))
+for digit in range(10):
+    plt.plot(guidance_scales, digit_frequencies[digit], marker='o', label=f'Digit {digit}')
+
+plt.xlabel('Guidance Scale', fontsize=16)
+plt.ylabel('Frequency', fontsize=16)
+plt.title('Frequency of Each Digit as a Function of Guidance Scale', fontsize=18)
+plt.legend(fontsize=14)
+plt.xticks(fontsize=14)
+plt.yticks(fontsize=14)
+plt.ylim(0, 0.3)
+plt.grid(True)
+plt.show()
+plt.savefig("digit_frequencies_vs_guidance_scale.png")
+
+# #%%
+# sample_indices = range(9)
+# training_epochs_list = [400, 2000]
+# classes_to_generate = [7]
+# guidance_scales = [1]
+# nums_time_steps = [1000]
+# save = True
+# fontsize = 22
+
+# images_all = []
+# titles_all = []
+# for sample_index in sample_indices:
+#     for training_epochs in training_epochs_list:
+#         images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
+#         images_all.extend(images)
+#         titles_all.extend([f"{training_epochs} epochs" for t in parameters])
+
+# fig = plot_images_with_titles(images_all, titles_all, nrows=len(sample_indices), ncols=len(training_epochs_list), fontsize=fontsize)
+# fig.show()
+# os.makedirs("comparisons/training_epochs", exist_ok=True)
+# if save:
+#     fig.savefig(f"comparisons/training_epochs/all_samples.png") 
+# #%%
+# sample_indices = range(5)
+# training_epochs = 2000
+# classes_to_generate = [7]
+# # guidance_scales = [-4, -2, -1, 0, 1, 3, 10, 30]
+# guidance_scales = [-4, -1, 1, 10]
+# nums_time_steps = [200]
+# save = True
+# fontsize = 22
+
+# images_all = []
+# titles_all = []
+# for sample_index in sample_indices:
+#     images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
+#     images_all.extend(images)
+#     titles_all.extend([fr"$\gamma={t['guidance_scale']}$" for t in parameters])
+
+# fig = plot_images_with_titles(images_all, titles_all, nrows=len(sample_indices), ncols=len(guidance_scales), fontsize=fontsize)
+# fig.show()
+# os.makedirs("comparisons/guidance_scale", exist_ok=True)
+# if save:
+#     fig.savefig(f"comparisons/guidance_scale/all_samples.png")
+
+# #%%
+# sample_indices = range(5)
+# training_epochs = 2000
+# classes_to_generate = [7]
+# guidance_scales = [1]
+# nums_time_steps = [20, 50, 200, 1000]
+# save = True
+# fontsize = 22
+
+# images_all = []
+# titles_all = []
+# for sample_index in sample_indices:
+#     images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
+#     images_all.extend(images)
+#     titles_all.extend([fr"$n={t['num_time_steps']}$" for t in parameters])
+
+# fig = plot_images_with_titles(images_all, titles_all, nrows=len(sample_indices), ncols=len(nums_time_steps), fontsize=fontsize)
+# fig.show()
+# os.makedirs("comparisons/num_time_steps", exist_ok=True)
+# if save:
+#     fig.savefig(f"comparisons/num_time_steps/all_samples.png")
+    
+# #%%
+# num_samples = 9
+# training_epochs = 2000
+# classes_to_generate = [0,1,2,3,4,5,6,7,8,9]
+# guidance_scales = [1]
+# nums_time_steps = [500]
+# fontsize = 22
+
+# for sample_index in range(0,9):
+#     images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=sample_index)
+
+#     titles = [f"digit {t['class_to_generate']}" for t in parameters]
+#     fig = plot_images_with_titles(images, titles, nrows=2, ncols=len(images)//2, fontsize=fontsize)
+#     fig.show()
+#     os.makedirs("comparisons/digits", exist_ok=True)
+#     fig.savefig(f"comparisons/digits/samples_{sample_index}.png")
+
+# #%%
+# num_samples = 9
+# training_epochs = 2000
+# classes_to_generate = [0,1,2,3,4,5,6,7,8,9]
+# guidance_scales = [1]
+# nums_time_steps = [500]
+# fontsize = 22
+
+# images, parameters = load_generated_samples(training_epochs, classes_to_generate, guidance_scales, nums_time_steps, sample_index=6)
+# closest_neighbors = []
+# for image in images:
+#     closest_index = find_closest_neighbor(torch.tensor(image)[:,:,0], mnist_dset)
+#     closest_neighbors.append(mnist_dset[closest_index][0].numpy().squeeze())
+# one_minus_neighbors = [1 - n for n in closest_neighbors]
+
+# #%%
+# # Plot generated images and their closest neighbors in one plot
+# titles_images = [f"generated" for t in parameters]
+
+# # Compute cosine similarity and make it the title
+# titles_neighbors = []
+# for image, neighbor in zip(images, closest_neighbors):
+#     image_tensor = torch.tensor(image)[:,:,0].flatten()
+#     neighbor_tensor = torch.tensor(neighbor).flatten()
+#     similarity = torch.nn.functional.cosine_similarity(image_tensor, neighbor_tensor, dim=0).item()
+#     titles_neighbors.append(f"similarity {similarity:.2f}")
+
+# all_images = images + one_minus_neighbors
+# all_titles = titles_images + titles_neighbors
+
+# fig = plot_images_with_titles(all_images, all_titles, nrows=2, ncols=len(images), fontsize=fontsize)
+# fig.show()
+# os.makedirs("comparisons/closest_mnist_neighbors", exist_ok=True)
+# fig.savefig(f"comparisons/closest_mnist_neighbors/all_samples.png")
+
+# all_images = images + one_minus_neighbors
+# all_titles = titles_images + titles_neighbors
+
+# fig = plot_images_with_titles(all_images, all_titles, nrows=2, ncols=len(images), fontsize=fontsize)
+# fig.show()
+# os.makedirs("comparisons/closest_mnist_neighbors", exist_ok=True)
+# fig.savefig(f"comparisons/closest_mnist_neighbors/all_samples.png")
+# %%
