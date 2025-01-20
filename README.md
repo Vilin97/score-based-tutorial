@@ -6,4 +6,4 @@ Generated digits (top row) and their closest neighbors (bottom row) in the MNIST
 ![closest_neighbors](https://github.com/user-attachments/assets/e219b50e-b5f0-4a1a-beaf-d2703196e07c)
 
 Effect of changing the guidance scale, γ:
-![guidance_scale_comparison](https://github.com/user-attachments/assets/9423c87e-8996-4d31-87ac-675a07baf701)
+<img src="https://github.com/user-attachments/assets/9423c87e-8996-4d31-87ac-675a07baf701" width="48">
